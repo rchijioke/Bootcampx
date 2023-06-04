@@ -114,15 +114,62 @@ const getAllReservations = function (guest_id, limit = 10) {
  * @return {Promise<[{}]>}  A promise to the properties.
  */
 const getAllProperties = (options, limit = 10) => {
-  pool
-    .query(`SELECT * FROM properties LIMIT $1`, [limit])
-    .then((result) => {
-      console.log(result.rows);
-      return result.rows;
-    })
-    .catch((err) => {
-      console.log(err.message);
-    });
+  const queryParams = [];
+  let queryString = `
+    SELECT properties.*, AVG(property_reviews.rating) AS average_rating
+    FROM properties
+    JOIN property_reviews ON properties.id = property_reviews.property_id
+  `;
+
+  let whereClause = '';
+
+  // Check if owner_id filter is provided
+  if (options.owner_id) {
+    queryParams.push(options.owner_id);
+    whereClause += ` WHERE properties.owner_id = $${queryParams.length}`;
+  }
+
+  // Check if price range filters are provided
+  if (options.minimum_price_per_night && options.maximum_price_per_night) {
+    if (whereClause === '') {
+      whereClause += ' WHERE';
+    } else {
+      whereClause += ' AND';
+    }
+    queryParams.push(options.minimum_price_per_night);
+    queryParams.push(options.maximum_price_per_night);
+    whereClause += ` properties.cost_per_night BETWEEN $${queryParams.length - 1} AND $${queryParams.length}`;
+  }
+
+  // Check if minimum_rating filter is provided
+  if (options.minimum_rating) {
+    if (whereClause === '') {
+      whereClause += ' WHERE';
+    } else {
+      whereClause += ' AND';
+    }
+    queryParams.push(options.minimum_rating);
+    whereClause += ` property_reviews.rating >= $${queryParams.length}`;
+  }
+
+  // Append the WHERE clause to the main query string
+  queryString += whereClause;
+
+  // Add GROUP BY, ORDER BY, and LIMIT clauses
+  queryString += `
+    GROUP BY properties.id
+    ORDER BY properties.cost_per_night
+    LIMIT $${queryParams.length + 1};
+  `;
+
+  // Add the limit parameter to the queryParams array
+  queryParams.push(limit);
+
+  // Log the final queryString and queryParams for debugging purposes
+  console.log(queryString, queryParams);
+
+  // Execute the query and return the result
+  return pool.query(queryString, queryParams).then((res) => res.rows);
 };
 
 /**
