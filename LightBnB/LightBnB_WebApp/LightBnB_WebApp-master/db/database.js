@@ -10,6 +10,8 @@ const pool = new Pool({
   database: 'lightbnb'
 });
 
+// the following assumes that you named your connection variable `pool`
+pool.query(`SELECT title FROM properties LIMIT 10;`).then(response => {console.log(response)})
 
 /**
  * Get a single user from the database given their email.
@@ -17,15 +19,27 @@ const pool = new Pool({
  * @return {Promise<{}>} A promise to the user.
  */
 const getUserWithEmail = function (email) {
-  let resolvedUser = null;
-  for (const userId in users) {
-    const user = users[userId];
-    // if (user?.email.toLowerCase() === email?.toLowerCase()) {
-    //   resolvedUser = user;
-    // }
-  }
-  return Promise.resolve(resolvedUser);
-};
+
+  const query = `
+  SELECT *
+  FROM users
+  WHERE email = $1
+  
+  `;
+  const values = [email.toLowerCase()];
+
+  return pool.query(query, values)
+  .then((result) => {
+    if (result.rows.length === 0) {
+      return null; // User does not exist
+    }
+    return result.rows[0]; // Return the user object
+
+  })
+  .catch((err) => {
+    console.error('Error executing query', err);
+  });
+}
 
 /**
  * Get a single user from the database given their id.
@@ -33,7 +47,15 @@ const getUserWithEmail = function (email) {
  * @return {Promise<{}>} A promise to the user.
  */
 const getUserWithId = function (id) {
-  return Promise.resolve(users[id]);
+  return pool
+  .query('SELECT * FROM users WHERE id = $1', [id])
+  .then((result) => {
+    return result.rows[0] || null;
+  })
+  .catch((err) => {
+    console.error('Error executing query', err);
+    throw err;
+  });
 };
 
 /**
@@ -42,12 +64,19 @@ const getUserWithId = function (id) {
  * @return {Promise<{}>} A promise to the user.
  */
 const addUser = function (user) {
-  const userId = Object.keys(users).length + 1;
-  user.id = userId;
-  users[userId] = user;
-  return Promise.resolve(user);
+  return pool
+    .query(
+      'INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *',
+      [user.name, user.email, user.password]
+    )
+    .then((result) => {
+      return result.rows[0];
+    })
+    .catch((err) => {
+      console.error('Error executing query', err);
+      throw err;
+    });
 };
-
 /// Reservations
 
 /**
